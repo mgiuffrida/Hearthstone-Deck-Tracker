@@ -116,47 +116,53 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 			var target = tvis.FirstOrDefault(x => x.Name.Contains(selected.MenuItem.Name.Substring(7)));
 			if(target != null)
 			{
-				if(selected.OptionControl.Visibility == Visibility.Collapsed)
+				if(selected.Visibility == Visibility.Collapsed)
 					AdvancedOptions.Instance.Show = true;
 				target.IsSelected = true;
 			}
 		}
 
-		public abstract class OptionWrapper
+		public interface OptionWrapper
 		{
-			public OptionWrapper(UserControlWrapper menuItem)
+			UserControlWrapper MenuItem { get; }
+			Visibility Visibility { get; }
+
+			// Returns true if the option matches the search query.
+			bool Matches(string query);
+
+			// Returns the user-friendly string describing the option.
+			string ToString();
+		}
+
+		public abstract class OptionWrapper<T> : OptionWrapper where T : Control
+		{
+			public OptionWrapper(UserControlWrapper menuItem, T control)
 			{
 				MenuItem = menuItem;
+				Control = control;
 			}
 
 			public UserControlWrapper MenuItem { get; }
+			public Visibility Visibility { get => Control.Visibility; }
+			public T Control { get; }
 
-			public abstract Control OptionControl { get; }
-
-			// Returns true if the option matches the search query.
 			public abstract bool Matches(string query);
-
-			// Returns the user-friendly string describing the option.
 			public override abstract string ToString();
 		}
 
-		public class CheckBoxWrapper : OptionWrapper
+		public class CheckBoxWrapper : OptionWrapper<CheckBox>
 		{
-			public CheckBoxWrapper(UserControlWrapper menuItem, CheckBox checkBox) : base(menuItem)
+			public CheckBoxWrapper(UserControlWrapper menuItem, CheckBox checkBox) : base(menuItem, checkBox)
 			{
-				CheckBox = checkBox;
 			}
-
-			private CheckBox CheckBox { get; }
-			public override Control OptionControl { get => CheckBox; }
 
 			public override bool Matches(string query)
 			{
-				return CheckBox.Content.ToString().ToUpperInvariant().Contains(query.ToUpperInvariant())
-					|| CheckBox.Name.ToUpperInvariant().Replace("CHECKBOX", "").Contains(query.ToUpperInvariant());
+				return Control.Content.ToString().ToUpperInvariant().Contains(query.ToUpperInvariant())
+					|| Control.Name.ToUpperInvariant().Replace("CHECKBOX", "").Contains(query.ToUpperInvariant());
 			}
 
-			public override string ToString() => $"{(CheckBox.Visibility == Visibility.Collapsed ? "[Adv.] " : "")}{MenuItem.Name.Substring(7).Insert(7, " > ")}: {CheckBox.Content}";
+			public override string ToString() => $"{(Control.Visibility == Visibility.Collapsed ? "[Adv.] " : "")}{MenuItem.Name.Substring(7).Insert(7, " > ")}: {Control.Content}";
 		}
 
 		public class UserControlWrapper
