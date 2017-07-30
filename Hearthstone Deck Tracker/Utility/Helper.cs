@@ -600,7 +600,8 @@ namespace Hearthstone_Deck_Tracker
 			}
 		}
 
-		public static IEnumerable<T> FindLogicalChildren<T>(DependencyObject depObj) where T : DependencyObject
+		// Recursively finds all descendants of depObj that are type T.
+		public static IEnumerable<T> FindLogicalDescendantsDeep<T>(DependencyObject depObj) where T : DependencyObject
 		{
 			if(depObj == null)
 				yield break;
@@ -609,10 +610,28 @@ namespace Hearthstone_Deck_Tracker
 				var obj = child as T;
 				if(obj != null)
 					yield return obj;
+				foreach (var childOfChild in FindLogicalDescendantsDeep<T>(obj))
+					yield return childOfChild;
+			}
+		}
+
+		// Finds all descendants of depObj that match filter, but does not recurse into matching objects (ie will not return both a parent and its child).
+		public static IEnumerable<T> FindLogicalDescendants<T>(Func<T, bool> filter, DependencyObject depObj) where T : DependencyObject
+		{
+			if(depObj == null)
+				yield break;
+			foreach(var child in LogicalTreeHelper.GetChildren(depObj))
+			{
+				var obj = child as T;
+				if(obj != null && filter(obj))
+				{
+					yield return obj;
+					continue;
+				}
 				var childDepObj = child as DependencyObject;
 				if(childDepObj == null)
 					continue;
-				foreach(var childOfChild in FindLogicalChildren<T>(childDepObj))
+				foreach(var childOfChild in FindLogicalDescendants<T>(filter, childDepObj))
 					yield return childOfChild;
 			}
 		}
