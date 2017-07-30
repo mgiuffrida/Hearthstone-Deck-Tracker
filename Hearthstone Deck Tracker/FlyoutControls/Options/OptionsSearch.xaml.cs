@@ -1,5 +1,6 @@
 ﻿#region
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -15,7 +16,7 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 	/// </summary>
 	public partial class OptionsSearch : UserControl
 	{
-		private List<CheckBoxWrapper> _checkBoxWrappers;
+		private List<OptionWrapper> _optionWrappers;
 
 		public OptionsSearch()
 		{
@@ -27,13 +28,13 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 			((TextBox) sender).Focus();
 		}
 
-		private List<CheckBoxWrapper> CheckBoxWrappers => _checkBoxWrappers ?? (_checkBoxWrappers = LoadWrappers());
+		private List<OptionWrapper> OptionWrappers => _optionWrappers ?? (_optionWrappers = LoadWrappers());
 
 		private void ButtonSearch_OnClick(object sender, RoutedEventArgs e) => UpdateSearchResult(TextBoxSearch.Text);
 
-		private List<CheckBoxWrapper> LoadWrappers()
+		private List<OptionWrapper> LoadWrappers()
 		{
-			var options = new[]
+			var optionsMenuItems = new[]
 			{
 				new UserControlWrapper(Core.MainWindow.Options.OptionsOverlayDeckWindows, nameof(Core.MainWindow.Options.OptionsOverlayDeckWindows)),
 				new UserControlWrapper(Core.MainWindow.Options.OptionsOverlayGeneral, nameof(Core.MainWindow.Options.OptionsOverlayGeneral)),
@@ -50,13 +51,51 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 				new UserControlWrapper(Core.MainWindow.Options.OptionsTrackerSettings, nameof(Core.MainWindow.Options.OptionsTrackerSettings)),
 				new UserControlWrapper(Core.MainWindow.Options.OptionsTrackerStats, nameof(Core.MainWindow.Options.OptionsTrackerStats))
 			};
-			var checkBoxWrappers = new List<CheckBoxWrapper>();
-			foreach(var option in options)
+			var optionWrappers = new List<OptionWrapper>();
+			foreach(var optionsMenuItem in optionsMenuItems)
 			{
-				var checkBoxes = Helper.FindLogicalChildren<CheckBox>(option.UserControl);
-				checkBoxWrappers.AddRange(checkBoxes.Select(cb => new CheckBoxWrapper {MenuItem = option, CheckBox = cb}));
+				var option = Helper.FindLogicalDescendants<DependencyObject>(IsSearchableOption, optionsMenuItem.UserControl);
+				optionWrappers.AddRange(option.Select(cb => WrapOption(optionsMenuItem, cb)));
 			}
-			return checkBoxWrappers;
+			return optionWrappers;
+		}
+
+		private bool IsSearchableOption(DependencyObject depObj)
+		{
+			var basicTypes = new List<Type>{typeof(CheckBox)};
+			if(basicTypes.Contains(depObj.GetType())) return true;
+			if(depObj is DockPanel)
+			{
+				var dockPanel = depObj as DockPanel;
+				foreach(var child in dockPanel.Children)
+				{
+					if(basicTypes.Contains(child.GetType())) return true;
+				}
+			}
+			return false;
+		}
+
+		private OptionWrapper WrapOption(UserControlWrapper menuItem, DependencyObject depObj)
+		{
+			if(depObj is DockPanel)
+			{
+				var panel = depObj as DockPanel;
+				foreach(var child in panel.Children)
+				{
+					if(child is CheckBox)
+						return WrapSimpleOption(menuItem, child as CheckBox);
+				}
+			}
+			return WrapSimpleOption(menuItem, depObj as ContentControl);
+		}
+
+		private OptionWrapper WrapSimpleOption(UserControlWrapper menuItem, ContentControl control)
+		{
+			if(control == null)
+				throw new ArgumentNullException("control");
+			if(control is CheckBox)
+				return new CheckBoxWrapper(menuItem, control as CheckBox);
+			throw new ArgumentException("Argument must be a wrappable option type.", "control");
 		}
 
 		private void UpdateSearchResult(string text)
@@ -64,30 +103,59 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 			ListBoxSearchResult.Items.Clear();
 			if(string.IsNullOrEmpty(text))
 				return;
-			foreach(var wrapper in CheckBoxWrappers.Where(x => x.CheckBox.Content.ToString().ToUpperInvariant().Contains(text.ToUpperInvariant())
-															|| (x.CheckBox.Name.ToUpperInvariant().Replace("CHECKBOX", "").Contains(text.ToUpperInvariant()))))
+			foreach(var wrapper in OptionWrappers.Where(x => x.Matches(text)))
 				ListBoxSearchResult.Items.Add(wrapper);
 		}
 
 		private void ListBoxSearchResult_OnMouseDoubleClick(object sender, MouseButtonEventArgs e)
 		{
-			var selected = (sender as ListBox)?.SelectedItem as CheckBoxWrapper;
+			var selected = (sender as ListBox)?.SelectedItem as OptionWrapper;
 			if(selected == null)
 				return;
-			var tvis = Helper.FindLogicalChildren<TreeViewItem>(Core.MainWindow.Options.TreeViewOptions);
+			var tvis = Helper.FindLogicalDescendantsDeep<TreeViewItem>(Core.MainWindow.Options.TreeViewOptions);
 			var target = tvis.FirstOrDefault(x => x.Name.Contains(selected.MenuItem.Name.Substring(7)));
 			if(target != null)
 			{
-				if(selected.CheckBox.Visibility == Visibility.Collapsed)
+				if(selected.OptionControl.Visibility == Visibility.Collapsed)
 					AdvancedOptions.Instance.Show = true;
 				target.IsSelected = true;
 			}
 		}
 
-		public class CheckBoxWrapper
+		public abstract class OptionWrapper
 		{
-			public CheckBox CheckBox { get; set; }
-			public UserControlWrapper MenuItem { get; set; }
+			public OptionWrapper(UserControlWrapper menuItem)
+			{
+				MenuItem = menuItem;
+			}
+
+			public UserControlWrapper MenuItem { get; }
+
+			public abstract Control OptionControl { get; }
+
+			// Returns true if the option matches the search query.
+			public abstract bool Matches(string query);
+
+			// Returns the user-friendly string describing the option.
+			public override abstract string ToString();
+		}
+
+		public class CheckBoxWrapper : OptionWrapper
+		{
+			public CheckBoxWrapper(UserControlWrapper menuItem, CheckBox checkBox) : base(menuItem)
+			{
+				CheckBox = checkBox;
+			}
+
+			private CheckBox CheckBox { get; }
+			public override Control OptionControl { get => CheckBox; }
+
+			public override bool Matches(string query)
+			{
+				return CheckBox.Content.ToString().ToUpperInvariant().Contains(query.ToUpperInvariant())
+					|| CheckBox.Name.ToUpperInvariant().Replace("CHECKBOX", "").Contains(query.ToUpperInvariant());
+			}
+
 			public override string ToString() => $"{(CheckBox.Visibility == Visibility.Collapsed ? "[Adv.] " : "")}{MenuItem.Name.Substring(7).Insert(7, " > ")}: {CheckBox.Content}";
 		}
 
