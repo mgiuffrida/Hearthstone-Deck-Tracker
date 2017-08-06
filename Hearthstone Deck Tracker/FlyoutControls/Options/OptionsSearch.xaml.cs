@@ -16,7 +16,7 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 	/// </summary>
 	public partial class OptionsSearch : UserControl
 	{
-		private List<OptionWrapper> _optionWrappers;
+		private List<IOptionWrapper> _optionWrappers;
 
 		public OptionsSearch()
 		{
@@ -28,11 +28,11 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 			((TextBox) sender).Focus();
 		}
 
-		private List<OptionWrapper> OptionWrappers => _optionWrappers ?? (_optionWrappers = LoadWrappers());
+		private List<IOptionWrapper> OptionWrappers => _optionWrappers ?? (_optionWrappers = LoadWrappers());
 
 		private void ButtonSearch_OnClick(object sender, RoutedEventArgs e) => UpdateSearchResult(TextBoxSearch.Text);
 
-		private List<OptionWrapper> LoadWrappers()
+		private List<IOptionWrapper> LoadWrappers()
 		{
 			var optionsMenuItems = new[]
 			{
@@ -51,7 +51,7 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 				new UserControlWrapper(Core.MainWindow.Options.OptionsTrackerSettings, nameof(Core.MainWindow.Options.OptionsTrackerSettings)),
 				new UserControlWrapper(Core.MainWindow.Options.OptionsTrackerStats, nameof(Core.MainWindow.Options.OptionsTrackerStats))
 			};
-			var optionWrappers = new List<OptionWrapper>();
+			var optionWrappers = new List<IOptionWrapper>();
 			foreach(var optionsMenuItem in optionsMenuItems)
 			{
 				var option = Helper.FindLogicalDescendants<DependencyObject>(IsSearchableOption, optionsMenuItem.UserControl);
@@ -63,24 +63,22 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 		private bool IsSearchableOption(DependencyObject depObj)
 		{
 			var basicTypes = new List<Type>{typeof(CheckBox)};
-			if(basicTypes.Contains(depObj.GetType())) return true;
-			if(depObj is DockPanel)
+			if(basicTypes.Contains(depObj.GetType()))
+				return true;
+
+			if(depObj is DockPanel dockPanel)
 			{
-				var dockPanel = depObj as DockPanel;
-				foreach(var child in dockPanel.Children)
-				{
-					if(basicTypes.Contains(child.GetType())) return true;
-				}
+				var elements = dockPanel.Children.Cast<UIElement>();
+				return Enumerable.Any<UIElement>(elements, child => basicTypes.Contains(child.GetType()));
 			}
 			return false;
 		}
 
-		private OptionWrapper WrapOption(UserControlWrapper menuItem, DependencyObject depObj)
+		private IOptionWrapper WrapOption(UserControlWrapper menuItem, DependencyObject depObj)
 		{
-			if(depObj is DockPanel)
+			if(depObj is DockPanel dockPanel)
 			{
-				var panel = depObj as DockPanel;
-				foreach(var child in panel.Children)
+				foreach(var child in dockPanel.Children)
 				{
 					if(child is CheckBox)
 						return WrapSimpleOption(menuItem, child as CheckBox);
@@ -89,13 +87,13 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 			return WrapSimpleOption(menuItem, depObj as ContentControl);
 		}
 
-		private OptionWrapper WrapSimpleOption(UserControlWrapper menuItem, ContentControl control)
+		private IOptionWrapper WrapSimpleOption(UserControlWrapper menuItem, ContentControl control)
 		{
 			if(control == null)
-				throw new ArgumentNullException("control");
-			if(control is CheckBox)
-				return new CheckBoxWrapper(menuItem, control as CheckBox);
-			throw new ArgumentException("Argument must be a wrappable option type.", "control");
+				throw new ArgumentNullException(nameof(control));
+			if(control is CheckBox checkBox)
+				return new CheckBoxWrapper(menuItem, checkBox);
+			throw new ArgumentException("Argument must be a wrappable option type.", nameof(control));
 		}
 
 		private void UpdateSearchResult(string text)
@@ -109,10 +107,10 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 
 		private void ListBoxSearchResult_OnMouseDoubleClick(object sender, MouseButtonEventArgs e)
 		{
-			var selected = (sender as ListBox)?.SelectedItem as OptionWrapper;
+			var selected = (sender as ListBox)?.SelectedItem as IOptionWrapper;
 			if(selected == null)
 				return;
-			var tvis = Helper.FindLogicalDescendantsDeep<TreeViewItem>(Core.MainWindow.Options.TreeViewOptions);
+			var tvis = Helper.FindLogicalChildrenDeep<TreeViewItem>(Core.MainWindow.Options.TreeViewOptions);
 			var target = tvis.FirstOrDefault(x => x.Name.Contains(selected.MenuItem.Name.Substring(7)));
 			if(target != null)
 			{
@@ -122,7 +120,7 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 			}
 		}
 
-		public interface OptionWrapper
+		public interface IOptionWrapper
 		{
 			UserControlWrapper MenuItem { get; }
 			Visibility Visibility { get; }
@@ -134,16 +132,16 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options
 			string ToString();
 		}
 
-		public abstract class OptionWrapper<T> : OptionWrapper where T : Control
+		public abstract class OptionWrapper<T> : IOptionWrapper where T : Control
 		{
-			public OptionWrapper(UserControlWrapper menuItem, T control)
+			protected OptionWrapper(UserControlWrapper menuItem, T control)
 			{
 				MenuItem = menuItem;
 				Control = control;
 			}
 
 			public UserControlWrapper MenuItem { get; }
-			public Visibility Visibility { get => Control.Visibility; }
+			public Visibility Visibility => Control.Visibility;
 			public T Control { get; }
 
 			public abstract bool Matches(string query);
